@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/qiita_export/models"
@@ -20,12 +21,17 @@ import (
 
 const (
 	outputDir      = "output"
-	defaultPerPage = 1
+	defaultPage    = 9
+	defaultPerPage = 100
+	retryTimes     = 5
 )
 
 var config *models.Config
 
 func main() {
+	// 時間計測用
+	start := time.Now()
+
 	// .envを環境変数にセットする
 	err := godotenv.Load()
 	if err != nil {
@@ -42,10 +48,12 @@ func main() {
 	if err := execute(config); err != nil {
 		log.Fatalf("Error execute: %v", err)
 	}
+
+	fmt.Printf("実行時間: %f min", time.Now().Sub(start).Minutes())
 }
 
 func execute(config *models.Config) error {
-	page := 1
+	page := defaultPage
 	perPage := defaultPerPage
 
 	for {
@@ -58,15 +66,33 @@ func execute(config *models.Config) error {
 		}
 		req.Header.Set("Authorization", token)
 
-		total, err := request(req)
-		if err != nil {
-			return fmt.Errorf("failed to request page=%d, per_page=%d: %w", page, perPage, err)
+		total := -1
+		var requestErr error
+		for i := 0; i < retryTimes; i++ {
+			t, err := request(req)
+			if err != nil {
+				requestErr = errors.Join(fmt.Errorf("failed to request page=%d, per_page=%d: %w", page, perPage, err))
+				fmt.Printf("retry page=%d\n", page)
+				time.Sleep(5 * time.Second)
+			} else {
+				total = t
+				break
+			}
+		}
+		if total == -1 && requestErr != nil {
+			return requestErr
 		}
 
 		if page*perPage > total {
 			break
 		}
 
+		// 進捗状況
+		completed := min(page*perPage, total)
+		progress := float64(completed) * 100 / float64(total)
+		remainingPages := (max(0, total-page*perPage) + perPage - 1) / perPage
+
+		fmt.Printf("Progress: %.1f%% (page=%d, remaining=%d)\n", progress, page, remainingPages)
 		page++
 	}
 
@@ -114,13 +140,16 @@ func downloadArticle(art *models.Article) error {
 
 	// mkdir
 	groupDir := filepath.Join(outputDir, art.Group.Name)
-	artDir := filepath.Join(groupDir, art.Title)
+	artDir := filepath.Join(groupDir, art.ID) // 記事名にSlashがある場合にエラーになるため、IDを採用
 	if err := os.MkdirAll(artDir, 0777); err != nil {
 		return err
 	}
 
+	// ファイル名のサニタイズ
+	sanitizedTitle := sanitizeFilename(art.Title)
+
 	// メタデータの保存
-	metadataPath := filepath.Join(artDir, art.Title+"_metadata.json")
+	metadataPath := filepath.Join(artDir, sanitizedTitle+"_metadata.json")
 	metadataJSON, err := json.MarshalIndent(art, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -131,7 +160,7 @@ func downloadArticle(art *models.Article) error {
 	fmt.Println("メタデータの保存に成功しました")
 
 	// Markdownファイルの保存
-	mdPath := filepath.Join(artDir, art.Title+".md")
+	mdPath := filepath.Join(artDir, sanitizedTitle+".md")
 	if err := os.WriteFile(mdPath, []byte(art.Body), 0666); err != nil {
 		return fmt.Errorf("failed to write markdown: %w", err)
 	}
@@ -190,4 +219,15 @@ func downloadArticleImages(body, artDir string) (retErr error) {
 	})
 
 	return
+}
+
+// ファイル名として使用できない文字をサニタイズする関数
+func sanitizeFilename(filename string) string {
+	// Windowsでも使用できるよう、一般的な禁止文字をすべて置換
+	invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := filename
+	for _, char := range invalidChars {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+	return result
 }
