@@ -120,7 +120,7 @@ func downloadArticle(art *models.Article) error {
 	}
 
 	// メタデータの保存
-	metadataPath := filepath.Join(artDir, "metadata.json")
+	metadataPath := filepath.Join(artDir, art.Title+"_metadata.json")
 	metadataJSON, err := json.MarshalIndent(art, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
