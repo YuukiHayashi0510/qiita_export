@@ -101,7 +101,7 @@ func createPathMap(dir string) (map[string]string, error) {
 
 // 文章を受け取り、正規表現でqiitaドメインのitemsを置換した値を取得する
 func replace(body string, pathMap map[string]string) (string, error) {
-	itemsRegexp := regexp.MustCompile(`https://domain\.com/[^/]+/items/([0-9a-z]+)(?:#.*)?`)
+	itemsRegexp := regexp.MustCompile(`https://domain\.com/[^/]+/items/([0-9a-z]+)(#.*)?`)
 
 	result := itemsRegexp.ReplaceAllStringFunc(body, func(s string) string {
 		matches := itemsRegexp.FindStringSubmatch(s)
