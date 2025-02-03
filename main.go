@@ -21,9 +21,10 @@ import (
 
 const (
 	outputDir      = "output"
-	defaultPage    = 9
+	defaultPage    = 1
 	defaultPerPage = 100
 	retryTimes     = 5
+	sleepTime      = 100 * time.Millisecond
 )
 
 var config *models.Config
@@ -167,7 +168,7 @@ func downloadArticle(art *models.Article) error {
 	fmt.Println("コンテンツの保存に成功しました")
 
 	// 画像のダウンロード
-	if err := downloadArticleImages(art.Body, artDir); err != nil {
+	if err := downloadArticleAssets(art.Body, artDir); err != nil {
 		return err
 	}
 
@@ -175,10 +176,12 @@ func downloadArticle(art *models.Article) error {
 }
 
 // 添付画像のダウンロード
-func downloadArticleImages(body, artDir string) (retErr error) {
-	imgRegexp := regexp.MustCompile(fmt.Sprintf(`https://%s/.+\.png`, config.Domain))
+func downloadArticleAssets(body, artDir string) (retErr error) {
+	assetRegexp := regexp.MustCompile(`https://qiita\.com/files/[0-9a-z-]+\.[^]\s"'<>)]+`)
 
-	_ = imgRegexp.ReplaceAllStringFunc(body, func(s string) string {
+	count := 0
+	_ = assetRegexp.ReplaceAllStringFunc(body, func(s string) string {
+		count++
 		if retErr != nil {
 			return s
 		}
@@ -205,6 +208,10 @@ func downloadArticleImages(body, artDir string) (retErr error) {
 		}
 		defer res.Body.Close()
 
+		if res.StatusCode == 403 {
+			fmt.Println("403:", artDir, s)
+		}
+
 		if _, err := io.Copy(f, res.Body); err != nil {
 			retErr = err
 			return s
@@ -215,8 +222,13 @@ func downloadArticleImages(body, artDir string) (retErr error) {
 			return s
 		}
 
+		// レート制限で403になってしまうため待機時間を設ける
+		time.Sleep(sleepTime)
+
 		return s
 	})
+
+	fmt.Println("total assets", count)
 
 	return
 }
