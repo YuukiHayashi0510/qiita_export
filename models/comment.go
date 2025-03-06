@@ -17,7 +17,7 @@ type Comment struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	User           User            `json:"user"`
-	EmojiReactions []EmojiReaction `json:"reactions"` // 絵文字リアクション, APIでは取得できない
+	EmojiReactions []EmojiReaction `json:"reactions"` // 絵文字リアクション, 同一エンドポイントでは取得できない
 }
 
 // コメントモデルのIDを利用して、絵文字リアクションをAPI経由で取得する

@@ -30,8 +30,8 @@ type Article struct {
 	TeamMembership      *TeamMembership `json:"team_membership"`
 	OrganizationURLName *string         `json:"organization_url_name"`
 	Slide               bool            `json:"slide"`
-	Comments            []Comment       `json:"comments"`  // コメント, APIでは取得できない
-	EmojiReactions      []EmojiReaction `json:"reactions"` // 絵文字リアクション, APIでは取得できない
+	Comments            []Comment       `json:"comments"`  // コメント, 同一エンドポイントでは取得できない
+	EmojiReactions      []EmojiReaction `json:"reactions"` // 絵文字リアクション, 同一エンドポイントでは取得できない
 }
 
 // ArticleモデルのIDを利用して、コメントをAPI経由で取得する
