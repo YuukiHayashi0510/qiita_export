@@ -26,7 +26,6 @@ type QiitaAPI struct {
 }
 
 func NewQiitaAPI(domain, token string) *QiitaAPI {
-	fmt.Println("NewQiitaAPI", domain, token)
 	return &QiitaAPI{
 		requestBaseApiUrl: fmt.Sprintf("https://%s/api/v2", domain),
 		authHeaderToken:   fmt.Sprintf("Bearer %s", token),
@@ -197,7 +196,7 @@ func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 	return comments, nil
 }
 
-// 添付画像のダウンロード
+// 添付ファイルのダウンロード
 func (a QiitaAPI) DownloadArticleAssets(body, artDir string) (retErr error) {
 	assetRegexp := regexp.MustCompile(os.Getenv("ASSET_REGEXP"))
 
