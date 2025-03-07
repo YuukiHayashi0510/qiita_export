@@ -70,7 +70,7 @@ func appendIDtoMarkdown(mdPath string, id string) error {
 
 	// IDがすでに付与されている場合はスキップ
 	if strings.Contains(string(mdContent), "ID: "+id) {
-		return nil // 静かにスキップ
+		return nil
 	}
 
 	// IDを付与したコンテンツを作成
