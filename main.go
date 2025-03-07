@@ -4,19 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/qiita_export/models"
+	"github.com/qiita_export/repository"
 )
 
 const (
@@ -50,38 +46,78 @@ func main() {
 		log.Fatalf("Error execute: %v", err)
 	}
 
-	fmt.Printf("実行時間: %f min", time.Now().Sub(start).Minutes())
+	fmt.Printf("実行時間: %f min", time.Since(start).Minutes())
 }
 
 func execute(config *models.Config) error {
 	page := defaultPage
 	perPage := defaultPerPage
+	api := repository.NewQiitaAPI(config.Domain, config.AccessToken)
 
 	for {
-		url := fmt.Sprintf("https://%s/api/v2/items?page=%d&per_page=%d", config.Domain, page, perPage)
-		token := fmt.Sprintf("Bearer %s", config.AccessToken)
+		params := fmt.Sprintf("page=%d&per_page=%d&query=title:\"テスト用の記事\"", page, perPage)
 
-		req, err := http.NewRequest(http.MethodGet, url, nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Authorization", token)
-
-		total := -1
+		var articles []models.Article
 		var requestErr error
-		for i := 0; i < retryTimes; i++ {
-			t, err := request(req)
+		// リトライ処理
+		for range retryTimes {
+			var err error
+			articles, err = api.RequestArticles(params)
 			if err != nil {
 				requestErr = errors.Join(fmt.Errorf("failed to request page=%d, per_page=%d: %w", page, perPage, err))
 				fmt.Printf("retry page=%d\n", page)
 				time.Sleep(5 * time.Second)
 			} else {
-				total = t
 				break
 			}
 		}
-		if total == -1 && requestErr != nil {
+
+		total := len(articles)
+		if total <= 0 && requestErr != nil {
 			return requestErr
+		}
+
+		// outputディレクトリの作成
+		if err := os.MkdirAll(outputDir, 0777); err != nil {
+			return err
+		}
+
+		// コメント, 絵文字の取得
+		for _, v := range articles {
+			comments, err := api.RequestComments(v.ID)
+			if err != nil {
+				return fmt.Errorf("コメントの取得に失敗しました: %w", err)
+			}
+			v.Comments = comments
+			// コメントの絵文字リアクションの取得
+			for _, c := range v.Comments {
+				reactions, err := api.RequestCommentReactions(c.ID)
+				if err != nil {
+					return fmt.Errorf("コメントの絵文字リアクションの取得に失敗しました: %w", err)
+				}
+				c.EmojiReactions = reactions
+			}
+
+			reactions, err := api.RequestArticleReactions(v.ID)
+			if err != nil {
+				return fmt.Errorf("絵文字リアクションの取得に失敗しました: %w", err)
+			}
+			v.EmojiReactions = reactions
+
+			// mkdir
+			groupDir := filepath.Join(outputDir, v.Group.Name)
+			artDir := filepath.Join(groupDir, v.ID) // 記事名にSlashがある場合にエラーになるため、IDを採用
+			if err := os.MkdirAll(artDir, 0777); err != nil {
+				return err
+			}
+
+			if err := downloadArticleToLocal(&v, artDir); err != nil {
+				return fmt.Errorf("記事のダウンロードに失敗しました: %w", err)
+			}
+
+			if err := api.DownloadArticleAssets(v.Body, artDir); err != nil {
+				return fmt.Errorf("記事のアセットのダウンロードに失敗しました: %w", err)
+			}
 		}
 
 		if page*perPage > total {
@@ -100,51 +136,8 @@ func execute(config *models.Config) error {
 	return nil
 }
 
-func request(req *http.Request) (int, error) {
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return -1, fmt.Errorf("failed to request api: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return -1, errors.New(res.Status)
-	}
-
-	var articles []*models.Article
-	if err := json.NewDecoder(res.Body).Decode(&articles); err != nil {
-		return -1, err
-	}
-
-	// outputディレクトリの作成
-	if err := os.MkdirAll(outputDir, 0777); err != nil {
-		return -1, err
-	}
-
-	// ダウンロード
-	for _, v := range articles {
-		if err := downloadArticle(v); err != nil {
-			return -1, err
-		}
-	}
-
-	total, err := strconv.Atoi(res.Header.Get("Total-Count"))
-	if err != nil {
-		return -1, err
-	}
-
-	return total, nil
-}
-
-func downloadArticle(art *models.Article) error {
+func downloadArticleToLocal(art *models.Article, artDir string) error {
 	fmt.Println(art.Title, strings.Repeat("=", 20))
-
-	// mkdir
-	groupDir := filepath.Join(outputDir, art.Group.Name)
-	artDir := filepath.Join(groupDir, art.ID) // 記事名にSlashがある場合にエラーになるため、IDを採用
-	if err := os.MkdirAll(artDir, 0777); err != nil {
-		return err
-	}
 
 	// ファイル名のサニタイズ
 	sanitizedTitle := sanitizeFilename(art.Title)
@@ -167,70 +160,7 @@ func downloadArticle(art *models.Article) error {
 	}
 	fmt.Println("コンテンツの保存に成功しました")
 
-	// 画像のダウンロード
-	if err := downloadArticleAssets(art.Body, artDir); err != nil {
-		return err
-	}
-
 	return nil
-}
-
-// 添付画像のダウンロード
-func downloadArticleAssets(body, artDir string) (retErr error) {
-	assetRegexp := regexp.MustCompile(`https://qiita\.com/files/[0-9a-z-]+\.[^]\s"'<>)]+`)
-
-	count := 0
-	_ = assetRegexp.ReplaceAllStringFunc(body, func(s string) string {
-		count++
-		if retErr != nil {
-			return s
-		}
-
-		f, err := os.Create(filepath.Join(artDir, path.Base(s)))
-		if err != nil {
-			retErr = err
-			return s
-		}
-
-		req, err := http.NewRequest(http.MethodGet, s, nil)
-		if err != nil {
-			retErr = err
-			return s
-		}
-
-		token := fmt.Sprintf("Bearer %s", config.AccessToken)
-		req.Header.Set("Authorization", token)
-
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			retErr = err
-			return s
-		}
-		defer res.Body.Close()
-
-		if res.StatusCode == 403 {
-			fmt.Println("403:", artDir, s)
-		}
-
-		if _, err := io.Copy(f, res.Body); err != nil {
-			retErr = err
-			return s
-		}
-
-		if err := f.Close(); err != nil {
-			retErr = err
-			return s
-		}
-
-		// レート制限で403になってしまうため待機時間を設ける
-		time.Sleep(sleepTime)
-
-		return s
-	})
-
-	fmt.Println("total assets", count)
-
-	return
 }
 
 // ファイル名として使用できない文字をサニタイズする関数
