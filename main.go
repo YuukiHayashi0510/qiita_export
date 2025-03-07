@@ -26,6 +26,8 @@ var config *models.Config
 
 func main() {
 	outputDir := flag.String("dir", "output", "default value is 'output'")
+	page := flag.Int("page", defaultPage, "default value is 1")
+	perPage := flag.Int("per_page", defaultPerPage, "default value is 100")
 	flag.Parse()
 
 	// 時間計測用
@@ -44,16 +46,14 @@ func main() {
 	}
 
 	// 処理
-	if err := execute(config, *outputDir); err != nil {
+	if err := execute(config, *outputDir, *page, *perPage); err != nil {
 		log.Fatalf("Error execute: %v", err)
 	}
 
 	fmt.Printf("実行時間: %f min", time.Since(start).Minutes())
 }
 
-func execute(config *models.Config, outputDir string) error {
-	page := defaultPage
-	perPage := defaultPerPage
+func execute(config *models.Config, outputDir string, page, perPage int) error {
 	api := repository.NewQiitaAPI(config.Domain, config.AccessToken)
 
 	for {
