@@ -112,43 +112,6 @@ func (a QiitaAPI) RequestArticleReactions(articleID string) ([]models.EmojiReact
 	return reactions, nil
 }
 
-// コメントモデルのIDを利用して、絵文字リアクションをAPI経由で取得する
-// GET /api/v2/comments/:comment_id/reactions にリクエストを送信し、格納する
-// https://qiita.com/api/v2/docs#get-apiv2commentscomment_idreactions
-func (a QiitaAPI) RequestCommentReactions(commentID string) ([]models.EmojiReaction, error) {
-	requestUrl, err := url.JoinPath(a.requestBaseApiUrl, "comments", commentID, "reactions")
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := a.newGetRequest(requestUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get emoji reactions: %s", res.Status)
-	}
-
-	// 絵文字リアクション情報を格納する
-	emojiReactions := make([]models.EmojiReaction, 0)
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(body, &emojiReactions); err != nil {
-		return nil, err
-	}
-
-	return emojiReactions, nil
-}
-
 // ArticleモデルのIDを利用して、コメントをAPI経由で取得する
 // GET /api/v2/items/:item_id/comments にリクエストを送信し、格納する
 // https://qiita.com/api/v2/docs#get-apiv2itemsitem_idcomments
@@ -185,8 +148,7 @@ func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 
 	// コメントの絵文字リアクション情報を取得する
 	for i, v := range comments {
-		time.Sleep(1 * time.Millisecond)
-		reactions, err := a.RequestCommentReactions(v.ID)
+		reactions, err := a.requestCommentReactions(v.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get emoji reactions: %w", err)
 		}
@@ -194,6 +156,43 @@ func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 	}
 
 	return comments, nil
+}
+
+// コメントモデルのIDを利用して、絵文字リアクションをAPI経由で取得する
+// GET /api/v2/comments/:comment_id/reactions にリクエストを送信し、格納する
+// https://qiita.com/api/v2/docs#get-apiv2commentscomment_idreactions
+func (a QiitaAPI) requestCommentReactions(commentID string) ([]models.EmojiReaction, error) {
+	requestUrl, err := url.JoinPath(a.requestBaseApiUrl, "comments", commentID, "reactions")
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := a.newGetRequest(requestUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get emoji reactions: %s", res.Status)
+	}
+
+	// 絵文字リアクション情報を格納する
+	emojiReactions := make([]models.EmojiReaction, 0)
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(body, &emojiReactions); err != nil {
+		return nil, err
+	}
+
+	return emojiReactions, nil
 }
 
 // 添付ファイルのダウンロード

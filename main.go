@@ -17,17 +17,15 @@ import (
 )
 
 const (
-	defaultPage    = 1
-	defaultPerPage = 100
-	retryTimes     = 5
+	retryTimes = 5
 )
 
 var config *models.Config
 
 func main() {
 	outputDir := flag.String("dir", "output", "default value is 'output'")
-	page := flag.Int("page", defaultPage, "default value is 1")
-	perPage := flag.Int("per_page", defaultPerPage, "default value is 100")
+	page := flag.Int("page", 1, "default value is 1")
+	perPage := flag.Int("per_page", 100, "default value is 100")
 	flag.Parse()
 
 	// 時間計測用
@@ -90,20 +88,11 @@ func execute(config *models.Config, outputDir string, page, perPage int) error {
 			if err != nil {
 				return fmt.Errorf("コメントの取得に失敗しました: %w", err)
 			}
-			v.Comments = comments
-			// コメントの絵文字リアクションの取得
-			for _, c := range v.Comments {
-				reactions, err := api.RequestCommentReactions(c.ID)
-				if err != nil {
-					return fmt.Errorf("コメントの絵文字リアクションの取得に失敗しました: %w", err)
-				}
-				c.EmojiReactions = reactions
-			}
-
 			reactions, err := api.RequestArticleReactions(v.ID)
 			if err != nil {
 				return fmt.Errorf("絵文字リアクションの取得に失敗しました: %w", err)
 			}
+			v.Comments = comments
 			v.EmojiReactions = reactions
 
 			// mkdir
