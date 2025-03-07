@@ -20,8 +20,6 @@ const (
 	sleepTime = 100 * time.Millisecond
 )
 
-var assetRegexp = regexp.MustCompile(os.Getenv("ASSET_REGEXP"))
-
 type QiitaAPI struct {
 	requestBaseApiUrl string
 	authHeaderToken   string
@@ -201,6 +199,8 @@ func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 
 // 添付画像のダウンロード
 func (a QiitaAPI) DownloadArticleAssets(body, artDir string) (retErr error) {
+	assetRegexp := regexp.MustCompile(os.Getenv("ASSET_REGEXP"))
+
 	count := 0
 	_ = assetRegexp.ReplaceAllStringFunc(body, func(s string) string {
 		count++

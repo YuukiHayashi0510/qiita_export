@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -16,16 +17,17 @@ import (
 )
 
 const (
-	outputDir      = "output"
 	defaultPage    = 1
 	defaultPerPage = 100
 	retryTimes     = 5
-	sleepTime      = 100 * time.Millisecond
 )
 
 var config *models.Config
 
 func main() {
+	outputDir := flag.String("dir", "output", "default value is 'output'")
+	flag.Parse()
+
 	// 時間計測用
 	start := time.Now()
 
@@ -42,14 +44,14 @@ func main() {
 	}
 
 	// 処理
-	if err := execute(config); err != nil {
+	if err := execute(config, *outputDir); err != nil {
 		log.Fatalf("Error execute: %v", err)
 	}
 
 	fmt.Printf("実行時間: %f min", time.Since(start).Minutes())
 }
 
-func execute(config *models.Config) error {
+func execute(config *models.Config, outputDir string) error {
 	page := defaultPage
 	perPage := defaultPerPage
 	api := repository.NewQiitaAPI(config.Domain, config.AccessToken)
