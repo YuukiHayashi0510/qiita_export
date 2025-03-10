@@ -65,9 +65,15 @@ func appendMetadataLinkToMarkdown(mdPath string, metadataFileName string) error 
 		return nil
 	}
 
+	// ファイル名に空白がある場合、リンクとして認識されないため、<>で囲む
+	linkValue := metadataFileName
+	if strings.Contains(string(mdContent), " ") || strings.Contains(string(mdContent), "　") {
+		linkValue = fmt.Sprintf("<%s>", metadataFileName)
+	}
+
 	// メタデータファイルへのリンクを付与したコンテンツを作成
 	updatedContent := string(mdContent) +
-		"\n[" + metadataFileName + "](" + metadataFileName + ")\n"
+		"\n[" + metadataFileName + "](" + linkValue + ")\n"
 
 	// ファイルに書き戻す
 	if err = os.WriteFile(mdPath, []byte(updatedContent), 0644); err != nil {
