@@ -60,14 +60,9 @@ func appendMetadataLinkToMarkdown(mdPath string, metadataFileName string) error 
 		return fmt.Errorf("マークダウンファイル読み込みエラー: %w", err)
 	}
 
-	// メタデータリンクがすでに付与されている場合はスキップ
-	if strings.Contains(string(mdContent), "["+metadataFileName+"]") {
-		return nil
-	}
-
 	// ファイル名に空白がある場合、リンクとして認識されないため、<>で囲む
 	linkValue := metadataFileName
-	if strings.Contains(string(mdContent), " ") || strings.Contains(string(mdContent), "　") {
+	if strings.Contains(string(linkValue), " ") || strings.Contains(string(linkValue), "　") {
 		linkValue = fmt.Sprintf("<%s>", metadataFileName)
 	}
 
