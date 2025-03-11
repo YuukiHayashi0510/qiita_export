@@ -26,6 +26,7 @@ func main() {
 	outputDir := flag.String("dir", "output", "default value is 'output'")
 	page := flag.Int("page", 1, "default value is 1")
 	perPage := flag.Int("per_page", 100, "default value is 100")
+	query := flag.String("query", "", "default value is empty")
 	flag.Parse()
 
 	// 時間計測用
@@ -44,35 +45,35 @@ func main() {
 	}
 
 	// 処理
-	if err := execute(config, *outputDir, *page, *perPage); err != nil {
+	if err := execute(config, *outputDir, *page, *perPage, *query); err != nil {
 		log.Fatalf("Error execute: %v", err)
 	}
 
-	fmt.Printf("実行時間: %f min", time.Since(start).Minutes())
+	fmt.Printf("実行時間: %f min, リクエスト数:%d", time.Since(start).Minutes(), repository.RequestCount)
 }
 
-func execute(config *models.Config, outputDir string, page, perPage int) error {
+func execute(config *models.Config, outputDir string, page, perPage int, query string) error {
 	api := repository.NewQiitaAPI(config.Domain, config.AccessToken)
 
 	for {
-		params := fmt.Sprintf("page=%d&per_page=%d&query=title:\"テスト用の記事\"", page, perPage)
+		params := fmt.Sprintf("page=%d&per_page=%d&query=%s", page, perPage, query)
 
 		var articles []models.Article
 		var requestErr error
+		var total int
 		// リトライ処理
 		for range retryTimes {
 			var err error
-			articles, err = api.RequestArticles(params)
+			articles, total, err = api.RequestArticles(params)
 			if err != nil {
 				requestErr = errors.Join(fmt.Errorf("failed to request page=%d, per_page=%d: %w", page, perPage, err))
-				fmt.Printf("retry page=%d\n", page)
+				fmt.Printf("retry page=%d, error:%v\n", page, err)
 				time.Sleep(5 * time.Second)
 			} else {
 				break
 			}
 		}
 
-		total := len(articles)
 		if total <= 0 && requestErr != nil {
 			return requestErr
 		}
@@ -122,6 +123,9 @@ func execute(config *models.Config, outputDir string, page, perPage int) error {
 
 		fmt.Printf("Progress: %.1f%% (page=%d, remaining=%d)\n", progress, page, remainingPages)
 		page++
+
+		// API制限を考慮して、リクエスト間隔を空ける
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	return nil

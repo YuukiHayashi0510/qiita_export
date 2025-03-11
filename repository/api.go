@@ -20,6 +20,9 @@ const (
 	sleepTime = 100 * time.Millisecond
 )
 
+// リクエスト回数, QiitaAPIでは1時間あたり1000回がリミットのため、一応記録する
+var RequestCount = 0
+
 type QiitaAPI struct {
 	requestBaseApiUrl string
 	authHeaderToken   string
@@ -35,44 +38,49 @@ func NewQiitaAPI(domain, token string) *QiitaAPI {
 func (a QiitaAPI) newGetRequest(url string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	req.Header.Set("Authorization", a.authHeaderToken)
+	RequestCount++
 	return req, nil
+}
+
+func (a QiitaAPI) wrapError(err error) error {
+	return fmt.Errorf("合計リクエスト数: %d, エラー: %w", RequestCount, err)
 }
 
 // QiitaAPIを利用して、記事をAPI経由で取得する
 // GET /api/v2/items にリクエストを送信し、格納する
 // https://qiita.com/api/v2/docs#get-apiv2items
-func (a QiitaAPI) RequestArticles(queryParams string) ([]models.Article, error) {
+func (a QiitaAPI) RequestArticles(queryParams string) ([]models.Article, int, error) {
 	// url.Valuesを使うと日本語がエンコーディングされてしまうため、そのままクエリパラメータを設定する
 	requestUrl := fmt.Sprintf("%s/items?%s", a.requestBaseApiUrl, queryParams)
 
 	req, err := a.newGetRequest(requestUrl)
 	if err != nil {
-		return nil, err
+		return nil, -1, a.wrapError(err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, -1, a.wrapError(err)
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get articles: %s, url: %s", res.Status, requestUrl)
+		return nil, -1, a.wrapError(fmt.Errorf("failed to get articles: %s, url: %s", res.Status, requestUrl))
 	}
 
 	total, err := strconv.Atoi(res.Header.Get("Total-Count"))
 	if err != nil {
-		return nil, err
+		return nil, -1, a.wrapError(err)
 	}
 
 	articles := make([]models.Article, 0, total)
 	if err := json.NewDecoder(res.Body).Decode(&articles); err != nil {
-		return nil, err
+		return nil, total, err
 	}
 
-	return articles, nil
+	return articles, total, nil
 }
 
 // ArticleモデルのIDを利用して、絵文字リアクションをAPI経由で取得する
@@ -81,32 +89,32 @@ func (a QiitaAPI) RequestArticles(queryParams string) ([]models.Article, error) 
 func (a QiitaAPI) RequestArticleReactions(articleID string) ([]models.EmojiReaction, error) {
 	requestUrl, err := url.JoinPath(a.requestBaseApiUrl, "items", articleID, "reactions")
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	req, err := a.newGetRequest(requestUrl)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get emoji reactions: %s", res.Status)
+		return nil, a.wrapError(fmt.Errorf("failed to get emoji reactions: %s", res.Status))
 	}
 
 	// 絵文字リアクション情報をEmojiReactionsに格納する
 	reactions := make([]models.EmojiReaction, 0)
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	if err := json.Unmarshal(body, &reactions); err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	return reactions, nil
@@ -118,32 +126,32 @@ func (a QiitaAPI) RequestArticleReactions(articleID string) ([]models.EmojiReact
 func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 	requestUrl, err := url.JoinPath(a.requestBaseApiUrl, "items", itemID, "comments")
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	req, err := a.newGetRequest(requestUrl)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get comments: %s", res.Status)
+		return nil, a.wrapError(fmt.Errorf("failed to get comments: %s", res.Status))
 	}
 
 	// コメント情報をCommentsに格納する
 	comments := make([]models.Comment, 0)
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	if err := json.Unmarshal(body, &comments); err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	// コメントの絵文字リアクション情報を取得する
@@ -164,32 +172,32 @@ func (a QiitaAPI) RequestComments(itemID string) ([]models.Comment, error) {
 func (a QiitaAPI) requestCommentReactions(commentID string) ([]models.EmojiReaction, error) {
 	requestUrl, err := url.JoinPath(a.requestBaseApiUrl, "comments", commentID, "reactions")
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	req, err := a.newGetRequest(requestUrl)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get emoji reactions: %s", res.Status)
+		return nil, a.wrapError(fmt.Errorf("failed to get emoji reactions: %s", res.Status))
 	}
 
 	// 絵文字リアクション情報を格納する
 	emojiReactions := make([]models.EmojiReaction, 0)
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 	if err := json.Unmarshal(body, &emojiReactions); err != nil {
-		return nil, err
+		return nil, a.wrapError(err)
 	}
 
 	return emojiReactions, nil
