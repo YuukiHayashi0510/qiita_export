@@ -59,7 +59,6 @@ func main() {
 
 		// ZIP化 - このチャンクのディレクトリだけを追加
 		args := append([]string{"-r", zipName}, filteredDirs[start:end]...)
-		args = append(args, "-x", "*_metadata.json")
 
 		cmd := exec.Command("zip", args...)
 		if err := cmd.Run(); err != nil {
