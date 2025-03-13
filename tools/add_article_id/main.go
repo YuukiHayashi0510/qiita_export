@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const IDKeyName = "Qiitaの記事ID"
+
 // メタデータJSONの構造体
 type Metadata struct {
 	ID string `json:"id"`
@@ -68,13 +70,15 @@ func appendIDtoMarkdown(mdPath string, id string) error {
 		return fmt.Errorf("マークダウンファイル読み込みエラー: %w", err)
 	}
 
+	idKeyValue := IDKeyName + ": " + id
+
 	// IDがすでに付与されている場合はスキップ
-	if strings.Contains(string(mdContent), "ID: "+id) {
+	if strings.Contains(string(mdContent), idKeyValue) {
 		return nil
 	}
 
 	// IDを付与したコンテンツを作成
-	updatedContent := string(mdContent) + "\nID: " + id + "\n"
+	updatedContent := string(mdContent) + "\n" + idKeyValue + "\n"
 
 	// ファイルに書き戻す
 	if err = os.WriteFile(mdPath, []byte(updatedContent), 0644); err != nil {
