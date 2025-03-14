@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/qiita_export/models"
+	"github.com/qiita_export/repository"
 )
 
 func main() {
@@ -19,6 +22,8 @@ func main() {
 		fmt.Println("ディレクトリ指定は必須です")
 		os.Exit(1)
 	}
+
+	repo := repository.ArticleMetadata{}
 
 	// ファイル探索
 	err := filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
@@ -42,8 +47,30 @@ func main() {
 			return fmt.Errorf("メタデータファイルがありません: %s", metadataPath)
 		}
 
+		// マークダウンファイルを読み込む
+		mdContent, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("マークダウンファイル読み込みエラー: %w", err)
+		}
+
+		// メタデータから記事を取得
+		article, err := repo.GetArticle(metadataPath)
+		if err != nil {
+			return err
+		}
+
+		// メタデータをマークダウンに追加
+		updatedContent := string(mdContent) + createMetadataForMarkdown(article)
 		// メタデータファイルへのリンクをマークダウンに追加
-		return appendMetadataLinkToMarkdown(path, baseName+"_metadata.json")
+		updatedContent += createFileLink(baseName + "_metadata.json")
+
+		// ファイル更新
+		if err = os.WriteFile(path, []byte(updatedContent), 0644); err != nil {
+			return fmt.Errorf("ファイル書き込みエラー: %w", err)
+		}
+		fmt.Printf("メタデータ追加完了 title=%s", filepath.Base(path))
+
+		return nil
 	})
 
 	if err != nil {
@@ -52,29 +79,32 @@ func main() {
 	}
 }
 
-// マークダウンファイルにメタデータファイルへのリンクを追加する関数
-func appendMetadataLinkToMarkdown(mdPath string, metadataFileName string) error {
-	// マークダウンファイルを読み込む
-	mdContent, err := os.ReadFile(mdPath)
-	if err != nil {
-		return fmt.Errorf("マークダウンファイル読み込みエラー: %w", err)
+func createMetadataForMarkdown(article *models.Article) string {
+	sep := "\n---\n"
+	codeBlock := func(value string) string {
+		return fmt.Sprintf("```\n%s\n```\n", value)
 	}
 
-	// ファイル名に空白がある場合、リンクとして認識されないため、<>で囲む
-	linkValue := metadataFileName
-	if strings.Contains(string(linkValue), " ") || strings.Contains(string(linkValue), "　") {
-		linkValue = fmt.Sprintf("<%s>", metadataFileName)
+	idKeyValue := "Qiitaの記事ID: " + article.ID
+
+	return sep + codeBlock(idKeyValue)
+}
+
+func createFileLink(metadataFileName string) string {
+	// 半角全角スペースが含まれていない場合はそのまま付与
+	if !strings.Contains(metadataFileName, " ") && !strings.Contains(metadataFileName, "　") {
+		return sprintFileLink(metadataFileName, metadataFileName)
+	}
+	// ()が含まれていない場合はそのまま付与
+	if !strings.Contains(metadataFileName, "(") && strings.Contains(metadataFileName, ")") {
+		return sprintFileLink(metadataFileName, metadataFileName)
 	}
 
-	// メタデータファイルへのリンクを付与したコンテンツを作成
-	updatedContent := string(mdContent) +
-		"\n[" + metadataFileName + "](" + linkValue + ")\n"
+	// ファイル名にマークダウンでリンクとして認識されない記号がある場合、<>で囲む
+	linkValue := fmt.Sprintf("<%s>", metadataFileName)
+	return sprintFileLink(metadataFileName, linkValue)
+}
 
-	// ファイルに書き戻す
-	if err = os.WriteFile(mdPath, []byte(updatedContent), 0644); err != nil {
-		return fmt.Errorf("ファイル書き込みエラー: %w", err)
-	}
-
-	fmt.Printf("メタデータリンク追加完了 file=%s\n", filepath.Base(mdPath))
-	return nil
+func sprintFileLink(title, link string) string {
+	return fmt.Sprintf("\n[%s](%s)\n", title, link)
 }
