@@ -39,7 +39,12 @@ func main() {
 	splits := strings.Split(*targetDir, "/")
 	baseName := splits[len(splits)-1]
 
-	filteredDirs := filterDirs(dirs, strings.Split(*excludeIDs, ",")...)
+	filteredDirs := dirs
+	// excludeIDs が空文字でない場合のみフィルタリングを適用
+	if *excludeIDs != "" {
+		filteredDirs = filterDirs(dirs, strings.Split(*excludeIDs, ",")...)
+		fmt.Printf("Filtered %d directories to %d\n", len(dirs), len(filteredDirs))
+	}
 
 	// チャンク数の計算
 	numChunks := (len(filteredDirs) + *chunkSize - 1) / *chunkSize
@@ -66,7 +71,7 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("Created %s (directories %d-%d of %d)\n", zipName, start+1, end, len(dirs))
+		fmt.Printf("Created %s (directories %d-%d of %d)\n", zipName, start+1, end, len(filteredDirs))
 	}
 }
 
